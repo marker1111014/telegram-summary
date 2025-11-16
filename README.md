@@ -1,4 +1,4 @@
-# Telegram Group Summarizer Bot (Using Gemini AI)
+# Telegram Group Summarizer Bot (Using Gemini AI API)
 
 This Telegram bot provides on-demand summaries of recent conversations within a group chat using Google's Gemini AI API. It helps users quickly catch up on discussions without reading through potentially hundreds of messages.
 
