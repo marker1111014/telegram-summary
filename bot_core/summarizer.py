@@ -81,14 +81,18 @@ def _raise_from_response(response) -> str:
 
     candidate = candidates[0]
     finish_reason = getattr(candidate, "finish_reason", None)
-    if finish_reason == "SAFETY":
+    finish_name = getattr(finish_reason, "name", None) or str(finish_reason)
+    if finish_name == "SAFETY":
+        logger.warning("Summary stopped for safety reasons.")
         raise SummaryError("❌ Summary generation stopped due to safety concerns about the conversation content.")
 
     try:
         text = response.text.strip()
     except (ValueError, AttributeError):
+        logger.warning("Response had no usable text part.")
         raise SummaryError("❌ The AI returned empty content. Please try again later.")
     if not text:
+        logger.warning("Summary text was empty after stripping.")
         raise SummaryError("❌ The AI returned an empty summary.")
     return text
 
@@ -101,7 +105,12 @@ async def generate_summary(messages: List[dict]) -> str:
 
     try:
         response = await asyncio.wait_for(
-            asyncio.to_thread(_model.generate_content, prompt, generation_config=GenerationConfig()),
+            asyncio.to_thread(
+                _model.generate_content,
+                prompt,
+                generation_config=GenerationConfig(),
+                request_options={"timeout": config.API_TIMEOUT_SECONDS},
+            ),
             timeout=config.API_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
