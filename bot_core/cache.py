@@ -26,12 +26,14 @@ def message_key(chat_id: int) -> str:
 def cache_message(chat_id: int, msg: dict) -> None:
     redis = get_client()
     key = message_key(chat_id)
-    redis.rpush(key, json.dumps(msg, ensure_ascii=False))
-    redis.ltrim(key, -config.MESSAGE_CACHE_SIZE, -1)
-    redis.expire(key, config.CACHE_TTL_SECONDS)
+    redis.pipeline().rpush(key, json.dumps(msg, ensure_ascii=False)).ltrim(
+        key, -config.MESSAGE_CACHE_SIZE, -1
+    ).expire(key, config.CACHE_TTL_SECONDS).exec()
 
 
 def get_recent_messages(chat_id: int, n: int) -> list:
+    if n <= 0:
+        return []
     redis = get_client()
     raw_items = redis.lrange(message_key(chat_id), -n, -1)
     messages = []

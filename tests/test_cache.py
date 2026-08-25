@@ -3,6 +3,35 @@ import json
 import bot_core.cache as cache
 
 
+class FakePipeline:
+    """Queues commands like upstash_redis Pipeline, applied on exec()."""
+
+    def __init__(self, fake):
+        self._fake = fake
+        self._ops = []
+
+    def rpush(self, key, *values):
+        self._ops.append(("rpush", key, values))
+        return self
+
+    def ltrim(self, key, start, end):
+        self._ops.append(("ltrim", key, start, end))
+        return self
+
+    def expire(self, key, seconds):
+        self._ops.append(("expire", key, seconds))
+        return self
+
+    def exec(self):
+        for op in self._ops:
+            if op[0] == "rpush":
+                self._fake.rpush(op[1], *op[2])
+            elif op[0] == "ltrim":
+                self._fake.ltrim(op[1], op[2], op[3])
+            else:
+                self._fake.expire(op[1], op[2])
+
+
 class FakeRedis:
     """Minimal in-memory stand-in with Redis-style negative indexing."""
 
@@ -27,6 +56,9 @@ class FakeRedis:
 
     def lrange(self, key, start, end):
         return self._slice(list(self.store.get(key, [])), start, end)
+
+    def pipeline(self):
+        return FakePipeline(self)
 
 
 def _msg(i):
@@ -69,3 +101,12 @@ def test_get_recent_messages_skips_corrupt_entries(monkeypatch):
     fake.rpush("chat:-100:messages", "{not json}", json.dumps(_msg(1)))
     got = cache.get_recent_messages(-100, 10)
     assert [m["message_id"] for m in got] == [1]
+
+
+def test_cache_message_preserves_non_ascii(monkeypatch):
+    _install_fake(monkeypatch)
+    msg = _msg(1)
+    msg["text"] = "中文測試"
+    cache.cache_message(-100, msg)
+    got = cache.get_recent_messages(-100, 1)
+    assert got[0]["text"] == "中文測試"
