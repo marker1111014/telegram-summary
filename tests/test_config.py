@@ -5,6 +5,7 @@ def test_required_values_loaded_from_env():
     assert config.TELEGRAM_BOT_TOKEN.startswith("123456789:")
     assert config.GEMINI_API_KEY == "test-gemini-key"
     assert config.UPSTASH_REDIS_REST_URL == "https://example.upstash.io"
+    assert config.UPSTASH_REDIS_REST_TOKEN == "test-upstash-token"
     assert config.WEBHOOK_SECRET == "test-webhook-secret"
 
 
