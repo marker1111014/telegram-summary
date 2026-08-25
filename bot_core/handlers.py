@@ -57,7 +57,7 @@ def _parse_count(args: Optional[List[str]]) -> int:
     if not args:
         return config.DEFAULT_SUMMARY_MESSAGES
     arg = args[0].strip()
-    if not arg.isdigit():
+    if not arg.isdecimal():
         return config.DEFAULT_SUMMARY_MESSAGES
     return min(max(int(arg), 1), config.MAX_SUMMARY_MESSAGES)
 
