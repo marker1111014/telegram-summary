@@ -18,15 +18,24 @@ logger = logging.getLogger(__name__)
 
 genai.configure(api_key=config.GEMINI_API_KEY)
 
+def _safety_threshold() -> HarmBlockThreshold:
+    """Resolve the configurable safety threshold (default: only block high-confidence harm)."""
+    raw = config.SAFETY_THRESHOLD
+    threshold = getattr(HarmBlockThreshold, raw, None)
+    if threshold is None:
+        logger.warning("Unknown GEMINI_SAFETY_THRESHOLD %r; falling back to BLOCK_ONLY_HIGH.", raw)
+        return HarmBlockThreshold.BLOCK_ONLY_HIGH
+    return threshold
+
+
 _SAFETY_SETTINGS = [
-    {"category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-     "threshold": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
-    {"category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-     "threshold": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
-    {"category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-     "threshold": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
-    {"category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-     "threshold": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE},
+    {"category": category, "threshold": _safety_threshold()}
+    for category in (
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        HarmCategory.HARM_CATEGORY_HARASSMENT,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    )
 ]
 
 _model = genai.GenerativeModel(model_name=config.GEMINI_MODEL_NAME, safety_settings=_SAFETY_SETTINGS)

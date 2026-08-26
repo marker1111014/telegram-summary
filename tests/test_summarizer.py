@@ -99,3 +99,19 @@ async def test_generate_summary_safety_enum_not_string(patch_generate):
     patch_generate(lambda prompt, generation_config=None, **kwargs: NoTextResponse())
     with pytest.raises(SummaryError, match="[Ss]afety"):
         await summarizer.generate_summary([])
+
+
+def test_safety_threshold_resolves_configured_name(monkeypatch):
+    import bot_core.config as config_module
+    from google.generativeai.types import HarmBlockThreshold
+
+    monkeypatch.setattr(config_module, "SAFETY_THRESHOLD", "BLOCK_NONE")
+    assert summarizer._safety_threshold() == HarmBlockThreshold.BLOCK_NONE
+
+
+def test_safety_threshold_falls_back_on_unknown_value(monkeypatch):
+    import bot_core.config as config_module
+    from google.generativeai.types import HarmBlockThreshold
+
+    monkeypatch.setattr(config_module, "SAFETY_THRESHOLD", "NOT_A_REAL_NAME")
+    assert summarizer._safety_threshold() == HarmBlockThreshold.BLOCK_ONLY_HIGH

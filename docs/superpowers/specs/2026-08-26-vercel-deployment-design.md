@@ -98,7 +98,7 @@ telegram_summary/
 
 - SDK:`google-generativeai==0.8.5`(維持原版,降低改動風險),同步呼叫包在 `asyncio.to_thread`。
 - 預設模型改為 **`gemini-3.6-flash`**(原版 `gemini-1.5-flash` 已被 Google 淘汰),可用 `GEMINI_MODEL_NAME` 覆蓋。
-- 安全設定沿用原版四類 `HARM_CATEGORY_*`,`BLOCK_MEDIUM_AND_ABOVE`。
+- 安全設定沿用原版四類 `HARM_CATEGORY_*`,門檻調整為 `BLOCK_ONLY_HIGH`(原 `BLOCK_MEDIUM_AND_ABOVE` 對閒聊群組誤擋率過高,實測經常以 SAFETY finish_reason 中止摘要)。
 - 單一通用 prompt:
   - 角色:Telegram 群組對話摘要助理
   - 要求:主題式摘要(重點討論、決議、問題、待辦)、粗體標題與強調、提及貢獻者用 `@username`、不引用 message ID
