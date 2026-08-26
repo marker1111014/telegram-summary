@@ -53,6 +53,70 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception:
         logger.error("Failed to cache message for chat %s", message.chat.id, exc_info=True)
 
+    threshold = config.AUTO_SUMMARY_THRESHOLD
+    if threshold <= 0:
+        return
+    try:
+        count = cache.incr_auto_summary_counter(message.chat.id)
+    except Exception:
+        logger.error("Failed to increment auto-summary counter for chat %s",
+                     message.chat.id, exc_info=True)
+        return
+    if count == threshold:
+        cache.reset_auto_summary_counter(message.chat.id)
+        _spawn_auto_summary(message.chat.id, threshold, context.bot)
+
+
+# ---------- automatic periodic summary ----------
+
+_auto_tasks: set = set()
+
+
+async def run_auto_summary(chat_id: int, num: int, bot) -> None:
+    """Summarize the last `num` cached messages and post them to the chat."""
+    remaining = cache.try_acquire_summary_slot(chat_id, config.SUMMARIZE_COOLDOWN_SECONDS)
+    if remaining:
+        logger.info("Auto summary for chat %s skipped; slot busy for %ss.", chat_id, remaining)
+        return
+    try:
+        messages = cache.get_recent_messages(chat_id, num)
+        if not messages:
+            cache.release_summary_slot(chat_id)
+            return
+        summary = await summarizer.generate_summary(messages)
+        header = f"🤖 *自動摘要*（每 {num} 則訊息）\n\n"
+        text = header + summary
+        if len(text) > 4096:
+            text = text[:4093] + "..."
+        notice = f"\n\n⏳ 此總結將在 {config.SUMMARY_AUTO_DELETE_SECONDS} 秒後自動刪除。"
+        try:
+            sent = await bot.send_message(chat_id=chat_id, text=text + notice,
+                                          parse_mode=constants.ParseMode.MARKDOWN,
+                                          disable_web_page_preview=True)
+        except Exception:
+            plain = re.sub(r"[*_\[\]()`]", "", text + notice)
+            sent = await bot.send_message(chat_id=chat_id, text=plain,
+                                          disable_web_page_preview=True)
+        await asyncio.sleep(config.SUMMARY_AUTO_DELETE_SECONDS)
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=sent.message_id)
+        except Exception:
+            logger.error("Failed to auto-delete auto-summary %s in chat %s",
+                         sent.message_id, chat_id, exc_info=True)
+    except summarizer.SummaryError as e:
+        cache.release_summary_slot(chat_id)
+        logger.warning("Auto summary for chat %s failed: %s", chat_id, e.user_message)
+    except Exception:
+        cache.release_summary_slot(chat_id)
+        logger.error("Auto summary for chat %s failed unexpectedly", chat_id, exc_info=True)
+
+
+def _spawn_auto_summary(chat_id: int, num: int, bot) -> None:
+    """Run the auto summary as a background task so the webhook can return immediately."""
+    task = asyncio.create_task(run_auto_summary(chat_id, num, bot))
+    _auto_tasks.add(task)
+    task.add_done_callback(_auto_tasks.discard)
+
 
 def _parse_count(args: Optional[List[str]]) -> int:
     if not args:

@@ -70,6 +70,11 @@ class FakeRedis:
             self.store.pop(key, None)
             self.ttls.pop(key, None)
 
+    def incr(self, key):
+        n = int(self.store.get(key, 0)) + 1
+        self.store[key] = n
+        return n
+
     def lrange(self, key, start, end):
         return self._slice(list(self.store.get(key, [])), start, end)
 
@@ -149,3 +154,18 @@ def test_release_summary_slot_allows_reacquire(monkeypatch):
     assert cache.try_acquire_summary_slot(-100, 60) == 0
     cache.release_summary_slot(-100)
     assert cache.try_acquire_summary_slot(-100, 60) == 0
+
+
+def test_incr_auto_summary_counter(monkeypatch):
+    fake = _install_fake(monkeypatch)
+    assert cache.incr_auto_summary_counter(-100) == 1
+    assert cache.incr_auto_summary_counter(-100) == 2
+    assert fake.ttls["chat:-100:auto_count"] == cache.config.CACHE_TTL_SECONDS
+
+
+def test_reset_auto_summary_counter(monkeypatch):
+    _install_fake(monkeypatch)
+    cache.incr_auto_summary_counter(-100)
+    cache.incr_auto_summary_counter(-100)
+    cache.reset_auto_summary_counter(-100)
+    assert cache.incr_auto_summary_counter(-100) == 1

@@ -62,3 +62,16 @@ def try_acquire_summary_slot(chat_id: int, cooldown_seconds: int) -> int:
 def release_summary_slot(chat_id: int) -> None:
     """Free the per-chat summarize slot (used when a request failed early)."""
     get_client().delete(f"chat:{chat_id}:summarize_slot")
+
+
+def incr_auto_summary_counter(chat_id: int) -> int:
+    """Count messages toward the next automatic summary; refresh TTL."""
+    redis = get_client()
+    key = f"chat:{chat_id}:auto_count"
+    count = redis.incr(key)
+    redis.expire(key, config.CACHE_TTL_SECONDS)
+    return count
+
+
+def reset_auto_summary_counter(chat_id: int) -> None:
+    get_client().set(f"chat:{chat_id}:auto_count", 0)

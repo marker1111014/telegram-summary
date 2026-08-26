@@ -49,7 +49,7 @@ Settings → Environment Variables 加入:
 | `GEMINI_API_KEY` | 向 [Google AI Studio](https://aistudio.google.com/app/apikey) 取得 |
 | `WEBHOOK_SECRET` | 自行產生的隨機字串,例如 `openssl rand -hex 32` |
 
-選填:`GEMINI_MODEL_NAME`(預設 `gemini-3.6-flash`)、`API_TIMEOUT_SECONDS`(預設 30)、`GEMINI_SAFETY_THRESHOLD`(預設 `BLOCK_ONLY_HIGH`,可設 `BLOCK_NONE`)、`SUMMARY_AUTO_DELETE_SECONDS`(預設 30,摘要自動刪除秒數)、`SUMMARIZE_COOLDOWN_SECONDS`(預設 60,每群 /summarize 冷卻與併發互斥秒數)。
+選填:`GEMINI_MODEL_NAME`(預設 `gemini-3.6-flash`)、`API_TIMEOUT_SECONDS`(預設 30)、`GEMINI_SAFETY_THRESHOLD`(預設 `BLOCK_ONLY_HIGH`,可設 `BLOCK_NONE`)、`SUMMARY_AUTO_DELETE_SECONDS`(預設 30,摘要自動刪除秒數)、`SUMMARIZE_COOLDOWN_SECONDS`(預設 60,每群 /summarize 冷卻與併發互斥秒數)、`AUTO_SUMMARY_THRESHOLD`(預設 100,每累積 N 則訊息自動發佈摘要;設 `0` 停用)。
 
 加完後執行一次 **Redeploy**。
 

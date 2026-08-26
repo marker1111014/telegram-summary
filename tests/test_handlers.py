@@ -76,6 +76,103 @@ async def test_handle_message_cache_failure_is_silent(monkeypatch):
     await handlers.handle_message(update, context)  # must not raise
 
 
+# ---------- auto summary on message threshold ----------
+
+def _patch_counter(monkeypatch, count):
+    monkeypatch.setattr(handlers.cache, "incr_auto_summary_counter", lambda chat_id: count)
+    reset = Mock()
+    monkeypatch.setattr(handlers.cache, "reset_auto_summary_counter", reset)
+    return reset
+
+
+async def test_handle_message_spawns_auto_summary_at_threshold(monkeypatch):
+    reset = _patch_counter(monkeypatch, count=100)
+    spawn = Mock()
+    monkeypatch.setattr(handlers, "_spawn_auto_summary", spawn)
+    update, context, _ = make_update()
+    await handlers.handle_message(update, context)
+    reset.assert_called_once_with(-100123)
+    spawn.assert_called_once_with(-100123, 100, context.bot)
+
+
+async def test_handle_message_no_spawn_below_threshold(monkeypatch):
+    reset = _patch_counter(monkeypatch, count=99)
+    spawn = Mock()
+    monkeypatch.setattr(handlers, "_spawn_auto_summary", spawn)
+    update, context, _ = make_update()
+    await handlers.handle_message(update, context)
+    reset.assert_not_called()
+    spawn.assert_not_called()
+
+
+async def test_handle_message_no_spawn_when_disabled(monkeypatch):
+    monkeypatch.setattr(handlers.config, "AUTO_SUMMARY_THRESHOLD", 0)
+    reset = _patch_counter(monkeypatch, count=100)
+    spawn = Mock()
+    monkeypatch.setattr(handlers, "_spawn_auto_summary", spawn)
+    update, context, _ = make_update()
+    await handlers.handle_message(update, context)
+    reset.assert_not_called()
+    spawn.assert_not_called()
+
+
+async def test_run_auto_summary_happy_path(monkeypatch):
+    msgs = [{"message_id": i, "user_name": "A", "username": None, "text": f"m{i}", "ts": "t"}
+            for i in range(1, 101)]
+    monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: msgs)
+    monkeypatch.setattr(summarizer, "generate_summary", AsyncMock(return_value="*Auto* summary"))
+    release = _patch_slot(monkeypatch)
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
+    bot = AsyncMock()
+    sent = SimpleNamespace(message_id=555)
+    bot.send_message = AsyncMock(return_value=sent)
+    await handlers.run_auto_summary(-100123, 100, bot)
+    kwargs = bot.send_message.await_args.kwargs
+    assert kwargs["chat_id"] == -100123
+    assert kwargs["text"].startswith("🤖")
+    assert "*Auto* summary" in kwargs["text"]
+    assert "自動摘要" in kwargs["text"]
+    assert "30 秒後自動刪除" in kwargs["text"]
+    sleep_mock.assert_awaited_once_with(30)
+    bot.delete_message.assert_awaited_once_with(chat_id=-100123, message_id=555)
+    release.assert_not_called()  # success keeps cooldown
+
+
+async def test_run_auto_summary_slot_blocked(monkeypatch):
+    _patch_slot(monkeypatch, remaining=42)
+    generate = AsyncMock()
+    monkeypatch.setattr(summarizer, "generate_summary", generate)
+    bot = AsyncMock()
+    await handlers.run_auto_summary(-100123, 100, bot)
+    generate.assert_not_awaited()
+    bot.send_message.assert_not_awaited()
+
+
+async def test_run_auto_summary_failure_releases_slot(monkeypatch):
+    monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: [{"text": "x"}])
+    monkeypatch.setattr(summarizer, "generate_summary",
+                        AsyncMock(side_effect=SummaryError("⏱️ timed out")))
+    release = _patch_slot(monkeypatch)
+    bot = AsyncMock()
+    await handlers.run_auto_summary(-100123, 100, bot)
+    release.assert_called_once_with(-100123)
+    bot.send_message.assert_not_awaited()
+
+
+async def test_spawn_auto_summary_creates_background_task(monkeypatch):
+    started = AsyncMock()
+    monkeypatch.setattr(handlers, "run_auto_summary", started)
+    captured = {}
+    def fake_create_task(coro):
+        captured["coro"] = coro
+        return Mock()
+    monkeypatch.setattr(handlers.asyncio, "create_task", fake_create_task)
+    handlers._spawn_auto_summary(-100123, 100, "bot")
+    started.assert_called_once_with(-100123, 100, "bot")
+    captured["coro"].close()  # avoid un-awaited coroutine warning
+
+
 # ---------- summarize_command ----------
 
 def _patch_slot(monkeypatch, remaining=0):
