@@ -54,6 +54,22 @@ class FakeRedis:
     def expire(self, key, seconds):
         self.ttls[key] = seconds
 
+    def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.store:
+            return False
+        self.store[key] = value
+        if ex is not None:
+            self.ttls[key] = ex
+        return True
+
+    def ttl(self, key):
+        return self.ttls.get(key, -1)
+
+    def delete(self, *keys):
+        for key in keys:
+            self.store.pop(key, None)
+            self.ttls.pop(key, None)
+
     def lrange(self, key, start, end):
         return self._slice(list(self.store.get(key, [])), start, end)
 
@@ -110,3 +126,26 @@ def test_cache_message_preserves_non_ascii(monkeypatch):
     cache.cache_message(-100, msg)
     got = cache.get_recent_messages(-100, 1)
     assert got[0]["text"] == "中文測試"
+
+
+def test_try_acquire_summary_slot_success_sets_ttl(monkeypatch):
+    fake = _install_fake(monkeypatch)
+    assert cache.try_acquire_summary_slot(-100, 60) == 0
+    assert fake.store["chat:-100:summarize_slot"] == "1"
+    assert fake.ttls["chat:-100:summarize_slot"] == 60
+
+
+def test_try_acquire_summary_slot_blocked_within_cooldown(monkeypatch):
+    _install_fake(monkeypatch)
+    assert cache.try_acquire_summary_slot(-100, 60) == 0
+    fake = cache.get_client()
+    fake.ttls["chat:-100:summarize_slot"] = 42  # simulate 42s elapsed remaining
+    remaining = cache.try_acquire_summary_slot(-100, 60)
+    assert remaining == 42
+
+
+def test_release_summary_slot_allows_reacquire(monkeypatch):
+    _install_fake(monkeypatch)
+    assert cache.try_acquire_summary_slot(-100, 60) == 0
+    cache.release_summary_slot(-100)
+    assert cache.try_acquire_summary_slot(-100, 60) == 0

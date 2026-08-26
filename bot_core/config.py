@@ -45,6 +45,8 @@ API_TIMEOUT_SECONDS = _int_env("API_TIMEOUT_SECONDS", 30)
 SAFETY_THRESHOLD = os.getenv("GEMINI_SAFETY_THRESHOLD", "BLOCK_ONLY_HIGH")
 # Seconds to keep a successful summary visible before deleting it.
 SUMMARY_AUTO_DELETE_SECONDS = _int_env("SUMMARY_AUTO_DELETE_SECONDS", 30)
+# Per-chat cooldown (also serves as in-flight mutex) between /summarize requests.
+SUMMARIZE_COOLDOWN_SECONDS = _int_env("SUMMARIZE_COOLDOWN_SECONDS", 60)
 
 MESSAGE_CACHE_SIZE = 500
 DEFAULT_SUMMARY_MESSAGES = 25

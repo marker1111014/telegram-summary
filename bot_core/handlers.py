@@ -97,6 +97,17 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     num = _parse_count(context.args)
 
+    remaining = cache.try_acquire_summary_slot(chat.id, config.SUMMARIZE_COOLDOWN_SECONDS)
+    if remaining:
+        try:
+            await message.reply_text(
+                f"⏳ 已有摘要正在產生或冷卻中，請約 {remaining} 秒後再試。",
+                disable_notification=True,
+            )
+        except Exception:
+            logger.warning("Failed to send cooldown notice in chat %s", chat.id, exc_info=True)
+        return
+
     processing = None
     try:
         processing = await message.reply_text(
@@ -110,6 +121,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         messages = cache.get_recent_messages(chat.id, num)
         if not messages:
+            cache.release_summary_slot(chat.id)
             await _deliver(processing, message,
                            "I don't have any cached messages for this chat yet. "
                            "Send some messages first, then try again!")
@@ -120,6 +132,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         notice = f"\n\n⏳ 此總結將在 {config.SUMMARY_AUTO_DELETE_SECONDS} 秒後自動刪除。"
         delivered = await _deliver(processing, message, summary + notice)
         if delivered is None:
+            cache.release_summary_slot(chat.id)
             return
         await asyncio.sleep(config.SUMMARY_AUTO_DELETE_SECONDS)
         try:
@@ -128,9 +141,11 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             logger.error("Failed to auto-delete summary %s in chat %s",
                          delivered.message_id, chat.id, exc_info=True)
     except summarizer.SummaryError as e:
+        cache.release_summary_slot(chat.id)
         await _deliver(processing, message, e.user_message)
     except Exception:
         logger.error("Unexpected error during /summarize in chat %s", chat.id, exc_info=True)
+        cache.release_summary_slot(chat.id)
         await _deliver(processing, message, ERROR_TEXT)
 
 

@@ -78,10 +78,20 @@ async def test_handle_message_cache_failure_is_silent(monkeypatch):
 
 # ---------- summarize_command ----------
 
+def _patch_slot(monkeypatch, remaining=0):
+    """Patch the cooldown slot: acquire succeeds by default; track release calls."""
+    monkeypatch.setattr(handlers.cache, "try_acquire_summary_slot",
+                        lambda chat_id, cooldown: remaining)
+    release = Mock()
+    monkeypatch.setattr(handlers.cache, "release_summary_slot", release)
+    return release
+
+
 async def test_summarize_happy_path(monkeypatch):
     msgs = [{"message_id": 1, "user_name": "A", "username": None, "text": "x", "ts": "t"}]
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: msgs)
     monkeypatch.setattr(summarizer, "generate_summary", AsyncMock(return_value="*Topic* summary"))
+    release = _patch_slot(monkeypatch)
     sleep_mock = AsyncMock()
     monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
     update, context, holder = make_update(args=["10"])
@@ -91,22 +101,41 @@ async def test_summarize_happy_path(monkeypatch):
     assert holder["proc"].edit_text.await_args.kwargs["text"] == expected
     sleep_mock.assert_awaited_once_with(30)
     context.bot.delete_message.assert_awaited_once_with(chat_id=-100123, message_id=999)
+    release.assert_not_called()  # success keeps the cooldown
+
+
+async def test_summarize_cooldown_active_blocks_request(monkeypatch):
+    acquire = Mock(return_value=42)
+    monkeypatch.setattr(handlers.cache, "try_acquire_summary_slot", acquire)
+    generate = AsyncMock()
+    monkeypatch.setattr(summarizer, "generate_summary", generate)
+    update, context, holder = make_update(args=["10"])
+    await handlers.summarize_command(update, context)
+    acquire.assert_called_once_with(-100123, handlers.config.SUMMARIZE_COOLDOWN_SECONDS)
+    reply_text = update.message.reply_text
+    reply_text.assert_awaited_once()
+    assert "42" in reply_text.await_args.args[0]
+    generate.assert_not_awaited()
+    context.bot.delete_message.assert_not_awaited()
 
 
 async def test_summarize_delete_failure_is_silent(monkeypatch):
     msgs = [{"message_id": 1, "user_name": "A", "username": None, "text": "x", "ts": "t"}]
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: msgs)
     monkeypatch.setattr(summarizer, "generate_summary", AsyncMock(return_value="s"))
+    release = _patch_slot(monkeypatch)
     monkeypatch.setattr(handlers.asyncio, "sleep", AsyncMock())
     update, context, holder = make_update(args=["10"])
     context.bot.delete_message.side_effect = RuntimeError("already gone")
     await handlers.summarize_command(update, context)  # must not raise
+    release.assert_not_called()  # delivery succeeded; cooldown stands
 
 
 async def test_summarize_error_path_no_autodelete(monkeypatch):
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: [{"text": "x"}])
     monkeypatch.setattr(summarizer, "generate_summary",
                         AsyncMock(side_effect=SummaryError("⏱️ timed out")))
+    release = _patch_slot(monkeypatch)
     sleep_mock = AsyncMock()
     monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
     update, context, holder = make_update(args=["5"])
@@ -115,22 +144,26 @@ async def test_summarize_error_path_no_autodelete(monkeypatch):
     assert "自動刪除" not in holder["proc"].edit_text.await_args.kwargs["text"]
     sleep_mock.assert_not_awaited()
     context.bot.delete_message.assert_not_awaited()
+    release.assert_called_once_with(-100123)  # failure frees the slot for retry
 
 
 async def test_summarize_empty_cache(monkeypatch):
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: [])
+    release = _patch_slot(monkeypatch)
     sleep_mock = AsyncMock()
     monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
     update, context, holder = make_update(args=[])
     await handlers.summarize_command(update, context)
     assert "cached" in holder["proc"].edit_text.await_args.kwargs["text"].lower()
     sleep_mock.assert_not_awaited()
+    release.assert_called_once_with(-100123)  # nothing consumed; free the slot
 
 
 async def test_summarize_summary_error_shown_to_user(monkeypatch):
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: [{"text": "x"}])
     monkeypatch.setattr(summarizer, "generate_summary",
                         AsyncMock(side_effect=SummaryError("⏱️ timed out")))
+    _patch_slot(monkeypatch)
     update, context, holder = make_update(args=["5"])
     await handlers.summarize_command(update, context)
     assert "timed out" in holder["proc"].edit_text.await_args.kwargs["text"]

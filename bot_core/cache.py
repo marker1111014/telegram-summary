@@ -43,3 +43,22 @@ def get_recent_messages(chat_id: int, n: int) -> list:
         except (TypeError, ValueError):
             logger.warning("Skipping corrupt cache entry in %s", message_key(chat_id))
     return messages
+
+
+def try_acquire_summary_slot(chat_id: int, cooldown_seconds: int) -> int:
+    """Acquire the per-chat summarize slot (in-flight mutex + cooldown).
+
+    Returns 0 when acquired; otherwise the remaining cooldown seconds.
+    """
+    redis = get_client()
+    key = f"chat:{chat_id}:summarize_slot"
+    acquired = redis.set(key, "1", nx=True, ex=cooldown_seconds)
+    if acquired:
+        return 0
+    remaining = redis.ttl(key)
+    return remaining if isinstance(remaining, int) and remaining > 0 else cooldown_seconds
+
+
+def release_summary_slot(chat_id: int) -> None:
+    """Free the per-chat summarize slot (used when a request failed early)."""
+    get_client().delete(f"chat:{chat_id}:summarize_slot")
