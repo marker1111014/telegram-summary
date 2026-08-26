@@ -118,3 +118,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         logger.error("Unexpected error during /summarize in chat %s", chat.id, exc_info=True)
         await _deliver(processing, message, ERROR_TEXT)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Unhandled exception while processing update %s", update, exc_info=context.error)

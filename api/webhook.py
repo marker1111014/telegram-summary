@@ -37,6 +37,7 @@ application.add_handler(MessageHandler(
     filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS & ~filters.VIA_BOT,
     handlers.handle_message,
 ))
+application.add_error_handler(handlers.error_handler)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -59,7 +60,7 @@ async def _ensure_started() -> None:
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request) -> JSONResponse:
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if not hmac.compare_digest(secret, config.WEBHOOK_SECRET):
+    if not hmac.compare_digest(secret.encode(), config.WEBHOOK_SECRET.encode()):
         return JSONResponse(status_code=403, content={"ok": False})
 
     try:

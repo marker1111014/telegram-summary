@@ -110,3 +110,8 @@ async def test_summarize_ignores_private_chats(monkeypatch):
     await handlers.summarize_command(update, context)
     called.assert_not_called()
     assert "proc" not in holder
+
+
+async def test_error_handler_logs_without_raising():
+    context = SimpleNamespace(error=RuntimeError("boom"))
+    await handlers.error_handler("update-obj", context)  # must not raise
