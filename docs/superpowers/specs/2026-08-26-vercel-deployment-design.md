@@ -140,7 +140,7 @@ Python runtime 由 requirements.txt 自動偵測,不需額外 build 設定。
 
 ## 7. 依賴異動(requirements.txt)
 
-**保留:** `python-telegram-bot==21.2`(移除 `[ext]`,JobQueue 已不需要)、`google-generativeai==0.8.5`、`python-dotenv==1.0.1`(本地 `.env` 用)、`httpx`(PTB 傳遞依賴)
+**保留:** `python-telegram-bot==22.8`(實作期間由 21.2 上修:21.2 在 Python 3.13 有 `__slots__` 缺陷導致 Application 無法建構,22.8 修正且 API 相容)、`google-generativeai==0.8.5`、`python-dotenv==1.0.1`(本地 `.env` 用)、`httpx`(PTB 傳遞依賴)
 
 **新增:** `upstash-redis`、`fastapi`
 
