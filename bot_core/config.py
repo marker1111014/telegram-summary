@@ -43,6 +43,8 @@ GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3.6-flash")
 API_TIMEOUT_SECONDS = _int_env("API_TIMEOUT_SECONDS", 30)
 # HarmBlockThreshold name: BLOCK_ONLY_HIGH (default) | BLOCK_NONE | BLOCK_LOW_AND_ABOVE | ...
 SAFETY_THRESHOLD = os.getenv("GEMINI_SAFETY_THRESHOLD", "BLOCK_ONLY_HIGH")
+# Seconds to keep a successful summary visible before deleting it.
+SUMMARY_AUTO_DELETE_SECONDS = _int_env("SUMMARY_AUTO_DELETE_SECONDS", 30)
 
 MESSAGE_CACHE_SIZE = 500
 DEFAULT_SUMMARY_MESSAGES = 25

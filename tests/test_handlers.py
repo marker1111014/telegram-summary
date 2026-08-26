@@ -9,6 +9,7 @@ from bot_core.summarizer import SummaryError
 class FakeProcessingMessage:
     def __init__(self):
         self.edit_text = AsyncMock()
+        self.message_id = 999
 
 
 def make_update(chat_id=-100123, chat_type="supergroup", args=None):
@@ -81,17 +82,49 @@ async def test_summarize_happy_path(monkeypatch):
     msgs = [{"message_id": 1, "user_name": "A", "username": None, "text": "x", "ts": "t"}]
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: msgs)
     monkeypatch.setattr(summarizer, "generate_summary", AsyncMock(return_value="*Topic* summary"))
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
     update, context, holder = make_update(args=["10"])
     await handlers.summarize_command(update, context)
     holder["proc"].edit_text.assert_awaited_once()
-    assert holder["proc"].edit_text.await_args.kwargs["text"] == "*Topic* summary"
+    expected = "*Topic* summary\n\n⏳ 此總結將在 30 秒後自動刪除。"
+    assert holder["proc"].edit_text.await_args.kwargs["text"] == expected
+    sleep_mock.assert_awaited_once_with(30)
+    context.bot.delete_message.assert_awaited_once_with(chat_id=-100123, message_id=999)
+
+
+async def test_summarize_delete_failure_is_silent(monkeypatch):
+    msgs = [{"message_id": 1, "user_name": "A", "username": None, "text": "x", "ts": "t"}]
+    monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: msgs)
+    monkeypatch.setattr(summarizer, "generate_summary", AsyncMock(return_value="s"))
+    monkeypatch.setattr(handlers.asyncio, "sleep", AsyncMock())
+    update, context, holder = make_update(args=["10"])
+    context.bot.delete_message.side_effect = RuntimeError("already gone")
+    await handlers.summarize_command(update, context)  # must not raise
+
+
+async def test_summarize_error_path_no_autodelete(monkeypatch):
+    monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: [{"text": "x"}])
+    monkeypatch.setattr(summarizer, "generate_summary",
+                        AsyncMock(side_effect=SummaryError("⏱️ timed out")))
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
+    update, context, holder = make_update(args=["5"])
+    await handlers.summarize_command(update, context)
+    assert "timed out" in holder["proc"].edit_text.await_args.kwargs["text"]
+    assert "自動刪除" not in holder["proc"].edit_text.await_args.kwargs["text"]
+    sleep_mock.assert_not_awaited()
+    context.bot.delete_message.assert_not_awaited()
 
 
 async def test_summarize_empty_cache(monkeypatch):
     monkeypatch.setattr(handlers.cache, "get_recent_messages", lambda chat_id, n: [])
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(handlers.asyncio, "sleep", sleep_mock)
     update, context, holder = make_update(args=[])
     await handlers.summarize_command(update, context)
     assert "cached" in holder["proc"].edit_text.await_args.kwargs["text"].lower()
+    sleep_mock.assert_not_awaited()
 
 
 async def test_summarize_summary_error_shown_to_user(monkeypatch):

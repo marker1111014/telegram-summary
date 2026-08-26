@@ -1,4 +1,5 @@
 """PTB command/message handlers."""
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -62,24 +63,28 @@ def _parse_count(args: Optional[List[str]]) -> int:
     return min(max(int(arg), 1), config.MAX_SUMMARY_MESSAGES)
 
 
-async def _deliver(target_message, source_message, text: str) -> None:
-    """Edit the processing message (or reply fresh), falling back to plain text."""
+async def _deliver(target_message, source_message, text: str):
+    """Edit the processing message (or reply fresh), falling back to plain text.
+
+    Returns the delivered Message (for later deletion), or None on total failure.
+    """
     try:
         if target_message is not None:
             await target_message.edit_text(text=text, parse_mode=constants.ParseMode.MARKDOWN,
                                            disable_web_page_preview=True)
-        else:
-            await source_message.reply_text(text=text, parse_mode=constants.ParseMode.MARKDOWN,
-                                            disable_web_page_preview=True)
+            return target_message
+        return await source_message.reply_text(text=text, parse_mode=constants.ParseMode.MARKDOWN,
+                                               disable_web_page_preview=True)
     except Exception:
         plain = re.sub(r"[*_\[\]()`]", "", text)
         try:
             if target_message is not None:
                 await target_message.edit_text(text=plain, disable_web_page_preview=True)
-            else:
-                await source_message.reply_text(text=plain, disable_web_page_preview=True)
+                return target_message
+            return await source_message.reply_text(text=plain, disable_web_page_preview=True)
         except Exception:
             logger.error("Failed to deliver summary message", exc_info=True)
+            return None
 
 
 async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -112,7 +117,16 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         summary = await summarizer.generate_summary(messages)
         if len(summary) > 4096:
             summary = summary[:4093] + "..."
-        await _deliver(processing, message, summary)
+        notice = f"\n\n⏳ 此總結將在 {config.SUMMARY_AUTO_DELETE_SECONDS} 秒後自動刪除。"
+        delivered = await _deliver(processing, message, summary + notice)
+        if delivered is None:
+            return
+        await asyncio.sleep(config.SUMMARY_AUTO_DELETE_SECONDS)
+        try:
+            await context.bot.delete_message(chat_id=chat.id, message_id=delivered.message_id)
+        except Exception:
+            logger.error("Failed to auto-delete summary %s in chat %s",
+                         delivered.message_id, chat.id, exc_info=True)
     except summarizer.SummaryError as e:
         await _deliver(processing, message, e.user_message)
     except Exception:
