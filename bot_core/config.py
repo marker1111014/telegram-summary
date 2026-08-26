@@ -13,6 +13,15 @@ def _require(name: str) -> str:
     return value
 
 
+def _first_env(*names: str) -> str:
+    """Return the first non-empty value among the given variable names."""
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    raise ValueError(f"Missing required environment variable (one of): {', '.join(names)}")
+
+
 def _int_env(name: str, default: int) -> int:
     raw = os.getenv(name)
     if raw is None or not raw.strip():
@@ -25,8 +34,9 @@ def _int_env(name: str, default: int) -> int:
 
 TELEGRAM_BOT_TOKEN = _require("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = _require("GEMINI_API_KEY")
-UPSTASH_REDIS_REST_URL = _require("UPSTASH_REDIS_REST_URL")
-UPSTASH_REDIS_REST_TOKEN = _require("UPSTASH_REDIS_REST_TOKEN")
+# Upstash integration may inject either naming set depending on version.
+UPSTASH_REDIS_REST_URL = _first_env("UPSTASH_REDIS_REST_URL", "KV_REST_API_URL")
+UPSTASH_REDIS_REST_TOKEN = _first_env("UPSTASH_REDIS_REST_TOKEN", "KV_REST_API_TOKEN")
 WEBHOOK_SECRET = _require("WEBHOOK_SECRET")
 
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")

@@ -1,3 +1,5 @@
+import importlib
+
 from bot_core import config
 
 
@@ -7,6 +9,20 @@ def test_required_values_loaded_from_env():
     assert config.UPSTASH_REDIS_REST_URL == "https://example.upstash.io"
     assert config.UPSTASH_REDIS_REST_TOKEN == "test-upstash-token"
     assert config.WEBHOOK_SECRET == "test-webhook-secret"
+
+
+def test_upstash_vars_fall_back_to_kv_names(monkeypatch):
+    """Vercel's Upstash integration may inject only the legacy KV_* names."""
+    monkeypatch.setenv("KV_REST_API_URL", "https://kv-fallback.example")
+    monkeypatch.setenv("KV_REST_API_TOKEN", "kv-fallback-token")
+    monkeypatch.delenv("UPSTASH_REDIS_REST_URL", raising=False)
+    monkeypatch.delenv("UPSTASH_REDIS_REST_TOKEN", raising=False)
+    try:
+        reloaded = importlib.reload(config)
+        assert reloaded.UPSTASH_REDIS_REST_URL == "https://kv-fallback.example"
+        assert reloaded.UPSTASH_REDIS_REST_TOKEN == "kv-fallback-token"
+    finally:
+        importlib.reload(config)  # restore primary-path values for other tests
 
 
 def test_defaults():
