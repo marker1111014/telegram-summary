@@ -1,87 +1,87 @@
-# Telegram Group Summarizer Bot(Vercel 版)
+# Telegram Group Summarizer Bot(Vercel ??
 
-使用 Google Gemini AI 摘要 Telegram 群組最近訊息的機器人,部署於 Vercel serverless,快取存於 Upstash Redis。
+使用 Google Gemini AI ?��? Telegram 群�??�近�??��?機器�??�署??Vercel serverless,快�?存於 Upstash Redis??
 
-## 功能
+## ?�能
 
-- `/summarize [N]`:摘要最近 N 則訊息(預設 25,上限 200)
-- `/start` / `/help`:使用說明
-- 自動快取群組文字訊息(每群最多 500 則,保留 7 天)
-- 以對話主要語言產生主題式摘要
+- `/summarize [N]`:?��??��?N ?��????�設 25,上�? 200)
+- `/start` / `/help`:使用說�?
+- ?��?快�?群�??��?訊息(每群?��?500 ??保�? 7 �?
+- 以�?話主要�?言?��?主�?式�?�?
 
-## 架構
+## ?��?
 
 ```
-Telegram ──webhook──▶ Vercel Function (api/webhook.py, FastAPI)
-                          ▼
+Telegram ?�?�webhook?�?�??Vercel Function (api/webhook.py, FastAPI)
+                          ??
                       PTB process_update()
-              ┌───────────┼────────────┐
-        文字訊息 → Redis  /start     /summarize N → Gemini → 回覆
+              ?��??�?�?�?�?�?�?�?�?�?�?��??�?�?�?�?�?�?�?�?�?�?�??
+        ?��?訊息 ??Redis  /start     /summarize N ??Gemini ???��?
 ```
 
-## 部署步驟
+## ?�署步�?
 
-### 1. 推上 GitHub
+### 1. ?��? GitHub
 
 ```bash
 git push origin vercel-deployment
 ```
 
-### 2. Vercel 匯入專案
+### 2. Vercel ?�入專�?
 
-1. 到 [Vercel Dashboard](https://vercel.com/dashboard) → **Add New... → Project**
-2. 匯入你的 repo(Python 會自動偵測)
-3. 建議在 Settings → Environment Variables 加上 `PYTHON_VERSION=3.13`(與本地開發版本一致;python-telegram-bot 22.8 需 Python ≥3.9)
+1. ??[Vercel Dashboard](https://vercel.com/dashboard) ??**Add New... ??Project**
+2. ?�入你�? repo(Python ?�自?�偵�?
+3. 建議??Settings ??Environment Variables ?��? `PYTHON_VERSION=3.13`(?�本?��??��??��???python-telegram-bot 22.8 ?� Python ??.9)
 
-### 3. 加入 Upstash Redis
+### 3. ?�入 Upstash Redis
 
-1. 專案的 **Storage** 分頁 → **Marketplace** → 選 **Upstash Redis**
-2. 選方案(Free 即可)並連結到本專案
-3. 完成後 `UPSTASH_REDIS_REST_URL` 與 `UPSTASH_REDIS_REST_TOKEN` 會自動注入
+1. 專�???**Storage** ?��? ??**Marketplace** ????**Upstash Redis**
+2. ?�方�?Free ?�可)並�???�本專�?
+3. 完�?�?`UPSTASH_REDIS_REST_URL` ??`UPSTASH_REDIS_REST_TOKEN` ?�自?�注??
 
-### 4. 設定環境變數
+### 4. 設�??��?變數
 
-Settings → Environment Variables 加入:
+Settings ??Environment Variables ?�入:
 
-| 變數 | 說明 |
+| 變數 | 說�? |
 |------|------|
-| `TELEGRAM_BOT_TOKEN` | 向 [@BotFather](https://t.me/BotFather) 取得 |
-| `GEMINI_API_KEY` | 向 [Google AI Studio](https://aistudio.google.com/app/apikey) 取得 |
-| `WEBHOOK_SECRET` | 自行產生的隨機字串,例如 `openssl rand -hex 32` |
+| `TELEGRAM_BOT_TOKEN` | ??[@BotFather](https://t.me/BotFather) ?��? |
+| `GEMINI_API_KEY` | ??[Google AI Studio](https://aistudio.google.com/app/apikey) ?��? |
+| `WEBHOOK_SECRET` | ?��??��??�隨機�?�?例�? `openssl rand -hex 32` |
 
-選填:`GEMINI_MODEL_NAME`(預設 `gemini-2.0-flash`)、`API_TIMEOUT_SECONDS`(預設 30)。
+?�填:`GEMINI_MODEL_NAME`(?�設 `gemini-3.6-flash`)?�`API_TIMEOUT_SECONDS`(?�設 30)??
 
-加完後執行一次 **Redeploy**。
+?��?後執行�?�?**Redeploy**??
 
-### 5. 註冊 Telegram Webhook
+### 5. 註�? Telegram Webhook
 
 ```bash
 curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-project>.vercel.app/api/webhook&secret_token=<WEBHOOK_SECRET>&allowed_updates=%5B%22message%22%5D"
 ```
 
-成功的回應:`{"ok":true,"result":true,"description":"Webhook was set"}`
+?��??��???`{"ok":true,"result":true,"description":"Webhook was set"}`
 
-### 6. BotFather 設定
+### 6. BotFather 設�?
 
-向 [@BotFather](https://t.me/BotFather):`/mybots` → 選你的 bot → **Bot Settings → Group Privacy → Turn off**(必須,否則收不到群組訊息)。
+??[@BotFather](https://t.me/BotFather):`/mybots` ???��???bot ??**Bot Settings ??Group Privacy ??Turn off**(必�?,?��??��??�群組�?????
 
 ### 7. 測試
 
-1. 把 bot 加進群組
-2. 讓大家發幾則訊息
-3. 送出 `/summarize`(或 `/summarize 100`)
+1. ??bot ?�進群�?
+2. 讓大家發幾�?訊息
+3. ?�出 `/summarize`(??`/summarize 100`)
 
-## 本地開發
+## ?�地?�發
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env   # 填入實際值
-python -m pytest       # 單元測試
-vercel dev             # 本地跑 serverless(curl 打 http://localhost:3000/api/webhook 測試)
+cp .env.example .env   # 填入實�???
+python -m pytest       # ?��?測試
+vercel dev             # ?�地�?serverless(curl ??http://localhost:3000/api/webhook 測試)
 ```
 
-## 限制
+## ?�制
 
-- 只能摘要 bot 上線期間收到的訊息(快取存 Redis,保留 7 天)
-- Hobby plan 函式上限 60 秒;Gemini 呼叫限時 30 秒
-- 冷啟動時首次回應可能延遲數秒
+- ?�能?��? bot 上�??��??�到?��???快�?�?Redis,保�? 7 �?
+- Hobby plan ?��?上�? 60 �?Gemini ?�叫?��? 30 �?
+- ?��??��?首次?��??�能延遲?��?

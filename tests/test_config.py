@@ -26,7 +26,7 @@ def test_upstash_vars_fall_back_to_kv_names(monkeypatch):
 
 
 def test_defaults():
-    assert config.GEMINI_MODEL_NAME == "gemini-2.0-flash"
+    assert config.GEMINI_MODEL_NAME == "gemini-3.6-flash"
     assert config.API_TIMEOUT_SECONDS == 30
     assert config.MESSAGE_CACHE_SIZE == 500
     assert config.DEFAULT_SUMMARY_MESSAGES == 25
