@@ -49,6 +49,7 @@ def test_processes_valid_update(client):
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
     client.process_update_mock.assert_awaited_once()
+    assert client.process_update_mock.await_args.args[0].update_id == 1
 
 
 def test_process_error_still_returns_ok(client):

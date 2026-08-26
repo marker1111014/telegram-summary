@@ -1,4 +1,6 @@
 """Vercel serverless entry point: Telegram webhook receiver."""
+import asyncio
+import hmac
 import logging
 import os
 import sys
@@ -39,24 +41,32 @@ application.add_handler(MessageHandler(
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 _initialized = False
+_start_lock = asyncio.Lock()
 
 
 async def _ensure_started() -> None:
     global _initialized
-    if not _initialized:
-        await application.initialize()
-        await application.start()
-        _initialized = True
-        logger.info("Telegram application initialized")
+    if _initialized:
+        return
+    async with _start_lock:
+        if not _initialized:
+            await application.initialize()
+            await application.start()
+            _initialized = True
+            logger.info("Telegram application initialized")
 
 
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request) -> JSONResponse:
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if secret != config.WEBHOOK_SECRET:
+    if not hmac.compare_digest(secret, config.WEBHOOK_SECRET):
         return JSONResponse(status_code=403, content={"ok": False})
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:
+        logger.warning("Discarding unparseable webhook body.")
+        return JSONResponse(content={"ok": False})
     await _ensure_started()
     update = Update.de_json(payload, application.bot)
     if update is not None:
